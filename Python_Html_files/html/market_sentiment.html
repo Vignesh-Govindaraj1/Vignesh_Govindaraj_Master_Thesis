@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Market Sentiment</title>
+    <style>
+        body { background: #111; color: #eee; font-family: Arial, sans-serif; padding: 30px; }
+        h2 { color: #40e0d0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #222; padding: 8px 10px; text-align: center; }
+        th { background: #232323; }
+        tr:nth-child(even) { background: #181818; }
+        .pos { color: #5fd18b; font-weight: bold; }
+        .neg { color: #ea5858; font-weight: bold; }
+        .neu { color: #dada7b; font-weight: bold; }
+        .error { color: #ff4c4c; margin-top: 30px; }
+        .btn { background: #232323; color: #eee; border: 1px solid #444; padding: 6px 16px; border-radius: 6px; cursor: pointer;}
+        .btn:hover { background: #555; }
+    </style>
+</head>
+<body>
+    <h2>Market Sentiment Analysis</h2>
+    <button class="btn" onclick="window.location.href='/chart'">Back to Chart</button>
+    <br><br>
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% elif results %}
+    <table>
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Avg Score</th>
+                <th>Net Sentiment</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in results %}
+            <tr>
+                <td>{{ row.symbol }}</td>
+                <td>{{ "%.3f"|format(row.avg_score) }}</td>
+                <td class="{% if row.net_sentiment == 'positive' %}pos{% elif row.net_sentiment == 'negative' %}neg{% else %}neu{% endif %}">
+                    {{ row.net_sentiment|capitalize }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div>No sentiment data found.</div>
+    {% endif %}
+</body>
+</html>

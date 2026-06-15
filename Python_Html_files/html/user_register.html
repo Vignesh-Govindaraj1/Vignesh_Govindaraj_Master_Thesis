@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register - Dalalstreet</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    input {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      width: 300px;
+      background: #222;
+      color: white;
+      border: 1px solid #444;
+    }
+    button {
+      padding: 10px 20px;
+      background: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    a {
+      color: #0af;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Register</h2>
+  {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+  <form method="POST">
+    <input type="text" name="username" placeholder="Username" required />
+    <input type="password" name="password" placeholder="Password" required />
+    <input type="email" name="email" placeholder="Email (optional)" />
+    <select name="role" required>
+      <option value="viewer">Viewer</option>
+      <option value="analyst">Analyst</option>
+    </select>
+    <button type="submit">Register</button>
+  </form>
+  <p>Already have an account? <a href="/login">Login</a></p>
+</body>
+</html>

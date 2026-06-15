@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dalalstreet Live Chart (IST)</title>
+  <button onclick="window.location.href='/sector'" style="margin-bottom: 15px;">📊 Sector Compass</button>
+  <button onclick="window.location.href='/market-sentiment'" style="margin-bottom: 15px; margin-left:8px;">📰 Market Sentiment</button>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body { background-color: #111; color: #eee; font-family: Arial, sans-serif; padding: 20px; }
+    input, select, button { margin: 5px; padding: 5px; background: #222; color: #fff; border: 1px solid #444; }
+    #mainChart { height: 600px; }
+    #volumeChart { height: 150px; margin-top: 10px; }
+    #rsiChart { height: 150px; margin-top: 10px; }
+    .indicator-options { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Dalalstreet Live Chart (IST)</h2>
+  <label for="symbol">Symbol:</label>
+  <input type="text" id="symbol" list="symbols" value="TCS" />
+  <datalist id="symbols"></datalist>
+  <label for="interval">Interval:</label>
+  <select id="interval">
+    <option value="1min">1min</option>
+    <option value="5min">5min</option>
+    <option value="15min" selected>15min</option>
+    <option value="1h">1h</option>
+    <option value="1d">1d</option>
+    <option value="1w">1w</option>
+    <option value="1mo">1mo</option>
+  </select>
+  <button onclick="loadData()">Load</button>
+  <div class="indicator-options">
+    <label><input type="checkbox" id="ma20Chk" checked /> MA 20</label>
+    <label><input type="checkbox" id="ma50Chk" checked /> MA 50</label>
+    <label><input type="checkbox" id="rsiChk" /> RSI</label>
+    <label><input type="checkbox" id="themeToggle" checked /> Dark Mode</label>
+  </div>
+  <div id="mainChart"></div>
+  <div id="volumeChart"></div>
+  <div id="rsiChart" style="display: none;"></div>
+  <script>
+    let mainChart, volumeChart, rsiChart;
+    let candleSeries, ma20, ma50, volumeSeries, rsiSeries;
+    let srLineSeries = [];
+    let highLowLines = []; // 52W high/low lines
+
+    const prefs = JSON.parse(localStorage.getItem("dalal_prefs") || "{}");
+    if (prefs.ma20 !== undefined) document.getElementById("ma20Chk").checked = prefs.ma20;
+    if (prefs.ma50 !== undefined) document.getElementById("ma50Chk").checked = prefs.ma50;
+    if (prefs.rsi !== undefined) document.getElementById("rsiChk").checked = prefs.rsi;
+    if (prefs.theme !== undefined) document.getElementById("themeToggle").checked = prefs.theme;
+
+    function getThemeConfig(dark) {
+      return {
+        layout: { background: { color: dark ? '#111' : '#fff' }, textColor: dark ? '#ccc' : '#000' },
+        grid: { vertLines: { color: dark ? '#222' : '#eee' }, horzLines: { color: dark ? '#222' : '#eee' } },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          tickMarkFormatter: (unixTime) => {
+            // UTC to IST
+            const dt = new Date(unixTime * 1000);
+            const istOffset = 330; // minutes
+            const utc = dt.getTime() + (dt.getTimezoneOffset() * 60000);
+            const ist = new Date(utc + (istOffset * 60000));
+            const h = ist.getHours().toString().padStart(2, '0');
+            const m = ist.getMinutes().toString().padStart(2, '0');
+            if (['1d', '1w', '1mo'].includes(document.getElementById('interval').value)) {
+              return `${ist.getDate()}/${ist.getMonth() + 1} ${h}:${m}`;
+            }
+            return `${h}:${m}`;
+          }
+        },
+        priceScale: { position: 'right' }
+      };
+    }
+
+    function createCharts() {
+      const dark = document.getElementById('themeToggle').checked;
+      mainChart = LightweightCharts.createChart(document.getElementById('mainChart'), getThemeConfig(dark));
+      volumeChart = LightweightCharts.createChart(document.getElementById('volumeChart'), getThemeConfig(dark));
+      rsiChart = LightweightCharts.createChart(document.getElementById('rsiChart'), getThemeConfig(dark));
+      candleSeries = mainChart.addCandlestickSeries();
+      ma20 = mainChart.addLineSeries({ color: 'orange', lineWidth: 1 });
+      ma50 = mainChart.addLineSeries({ color: 'blue', lineWidth: 1 });
+      volumeSeries = volumeChart.addHistogramSeries({ color: '#26a69a', priceFormat: { type: 'volume' } });
+      rsiSeries = rsiChart.addLineSeries({ color: 'purple', lineWidth: 1 });
+    }
+
+    function calculateMA(data, period) {
+      return data.map((d, i) => {
+        if (i < period - 1) return null;
+        const slice = data.slice(i - period + 1, i + 1);
+        const avg = slice.reduce((sum, d) => sum + d.close, 0) / period;
+        return { time: d.time, value: avg };
+      }).filter(Boolean);
+    }
+
+    function calculateRSI(data, period = 14) {
+      let rsi = [], gains = 0, losses = 0;
+      for (let i = 1; i <= period; i++) {
+        let diff = data[i].close - data[i - 1].close;
+        if (diff >= 0) gains += diff; else losses -= diff;
+      }
+      let avgGain = gains / period, avgLoss = losses / period;
+      let rs = avgGain / (avgLoss || 1);
+      rsi.push({ time: data[period].time, value: 100 - 100 / (1 + rs) });
+
+      for (let i = period + 1; i < data.length; i++) {
+        let diff = data[i].close - data[i - 1].close;
+        if (diff >= 0) avgGain = (avgGain * (period - 1) + diff) / period;
+        else avgLoss = (avgLoss * (period - 1) - diff) / period;
+        rs = avgGain / (avgLoss || 1);
+        rsi.push({ time: data[i].time, value: 100 - 100 / (1 + rs) });
+      }
+      return rsi;
+    }
+
+    async function loadSymbols() {
+      try {
+        const res = await fetch('/api/symbols');
+        const symbols = await res.json();
+        const datalist = document.getElementById("symbols");
+        datalist.innerHTML = "";
+        if (!Array.isArray(symbols)) throw new Error("Invalid response");
+        symbols.forEach(s => {
+          const option = document.createElement("option");
+          option.value = s;
+          datalist.appendChild(option);
+        });
+      } catch (err) {
+        console.error("Failed to load symbols:", err);
+      }
+    }
+
+    // Draw support/resistance as horizontal segments
+    async function drawSupportResistance(symbol) {
+      if (srLineSeries.length) {
+        srLineSeries.forEach(ser => mainChart.removeSeries(ser));
+        srLineSeries = [];
+      }
+      try {
+        const interval = document.getElementById('interval').value.replace('min','') || '15';
+        const res = await fetch(`/api/support-resistance?symbol=${symbol}&interval=${interval}`);
+        const zones = await res.json();
+        if (!Array.isArray(zones)) return;
+        zones.forEach(z => {
+          const color = z.type === "support" ? "blue" : "red";
+          const series = mainChart.addLineSeries({
+            color: color, lineWidth: 4, lineStyle: 0, priceLineVisible: false, crossHairMarkerVisible: false
+          });
+          series.setData([
+            { time: z.start_time, value: z.price },
+            { time: z.end_time, value: z.price }
+          ]);
+          srLineSeries.push(series);
+        });
+      } catch (err) {
+        console.error("Support/Resistance load error:", err);
+      }
+    }
+
+    // Only set markers where candle time matches (ensures markers show up)
+    function filterAndFormatMarkers(predData, candleData) {
+      const candleTimes = new Set(candleData.map(c => c.time));
+      let countBuy = 0, countSell = 0;
+      const markers = predData.map(row => {
+        if (!candleTimes.has(row.timestamp)) return null; // Only show if time matches
+        if (row.pred === 2) { countBuy++; return {
+          time: row.timestamp, position: 'belowBar', color: 'lime', shape: 'arrowUp', text: 'BUY'
+        }; }
+        if (row.pred === 0) { countSell++; return {
+          time: row.timestamp, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL'
+        }; }
+        return null;
+      }).filter(Boolean);
+      console.log(`Price Action Markers: BUY=${countBuy}, SELL=${countSell}, Total=${markers.length}`);
+      return markers;
+    }
+
+    // Remove any previous 52W lines
+    function clearHighLowLines() {
+      if (highLowLines.length) {
+        highLowLines.forEach(l => mainChart.removeSeries(l));
+        highLowLines = [];
+      }
+    }
+
+    async function loadData() {
+      const rawSymbol = document.getElementById("symbol").value;
+      const symbol = rawSymbol.trim().replace(/\s/g, "").toUpperCase();
+      const interval = document.getElementById("interval").value;
+      const ma20On = document.getElementById("ma20Chk").checked;
+      const ma50On = document.getElementById("ma50Chk").checked;
+      const rsiOn = document.getElementById("rsiChk").checked;
+
+      localStorage.setItem("dalal_prefs", JSON.stringify({
+        ma20: ma20On, ma50: ma50On, rsi: rsiOn,
+        theme: document.getElementById("themeToggle").checked
+      }));
+
+      try {
+        const response = await fetch(`/api/candles-live?symbol=${symbol}&interval=${interval}`);
+        const data = await response.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          alert("Failed to load chart data.");
+          return;
+        }
+
+        document.getElementById("mainChart").innerHTML = '';
+        document.getElementById("volumeChart").innerHTML = '';
+        document.getElementById("rsiChart").style.display = rsiOn ? '' : 'none';
+
+        createCharts();
+        candleSeries.setData(data);
+        if (ma20On) ma20.setData(calculateMA(data, 20));
+        if (ma50On) ma50.setData(calculateMA(data, 50));
+        volumeSeries.setData(data.map(c => ({
+          time: c.time,
+          value: c.volume,
+          color: c.close > c.open ? '#26a69a' : '#ef5350'
+        })));
+        if (rsiOn) rsiSeries.setData(calculateRSI(data));
+        drawSupportResistance(symbol);
+
+        // --- 52 WEEK HIGH/LOW LINES (add/remove logic) ---
+        clearHighLowLines();
+        try {
+          if (["1h", "1d", "1w", "1mo"].includes(interval)) {
+            const hlRes = await fetch(`/api/52week-highlow?symbol=${symbol}&interval=${interval}`);
+            const hl = await hlRes.json();
+            if (hl && hl.high && hl.low) {
+              const highLine = mainChart.addLineSeries({
+                color: 'lime', lineWidth: 2, lineStyle: 2, priceLineVisible: true, title: '52W High'
+              });
+              highLine.setData([
+                { time: data[0].time, value: hl.high },
+                { time: data[data.length - 1].time, value: hl.high }
+              ]);
+              const lowLine = mainChart.addLineSeries({
+                color: 'magenta', lineWidth: 2, lineStyle: 2, priceLineVisible: true, title: '52W Low'
+              });
+              lowLine.setData([
+                { time: data[0].time, value: hl.low },
+                { time: data[data.length - 1].time, value: hl.low }
+              ]);
+              highLowLines.push(highLine, lowLine);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load 52W high/low:", err);
+        }
+        // --- END 52 WEEK HIGH/LOW SECTION ---
+
+        // --- PRICE ACTION SIGNALS (match only visible candles) ---
+        try {
+          const predRes = await fetch(`/api/predict-breakouts?symbol=${symbol}`);
+          const predData = await predRes.json();
+          if (Array.isArray(predData) && predData.length) {
+            const markers = filterAndFormatMarkers(predData, data);
+            candleSeries.setMarkers(markers);
+          } else {
+            candleSeries.setMarkers([]);
+          }
+        } catch (err) {
+          console.error("Price action markers error:", err);
+          candleSeries.setMarkers([]);
+        }
+        // --- END PRICE ACTION SECTION ---
+
+      } catch (err) {
+        console.error("Chart load error:", err);
+        alert("Failed to load chart data.");
+      }
+    }
+
+    loadSymbols();
+    loadData();
+    document.getElementById("themeToggle").addEventListener("change", loadData);
+  </script>
+</body>
+</html>

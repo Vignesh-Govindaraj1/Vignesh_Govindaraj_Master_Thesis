@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dalalstreet Candlestick Chart (IST)</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body {
+      background-color: #111;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    input, select, button {
+      margin: 5px;
+      padding: 5px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+    }
+    #mainChart { height: 600px; }
+    #volumeChart { height: 150px; margin-top: 10px; }
+    #rsiChart { height: 150px; margin-top: 10px; }
+    .indicator-options { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Dalalstreet Live Candlestick Chart (IST)</h2>
+
+  <label for="symbol">Symbol:</label>
+  <input type="text" id="symbol" value="TCS" />
+
+  <label for="interval">Interval:</label>
+  <select id="interval">
+    <option value="1min">1min</option>
+    <option value="5min">5min</option>
+    <option value="15min">15min</option>
+    <option value="1h">1h</option>
+    <option value="1d">1d</option>
+  </select>
+
+  <button onclick="loadData()">Load</button>
+
+  <div class="indicator-options">
+    <label><input type="checkbox" id="ma20Chk" checked> MA 20</label>
+    <label><input type="checkbox" id="ma50Chk" checked> MA 50</label>
+    <label><input type="checkbox" id="rsiChk"> RSI</label>
+  </div>
+
+  <div id="mainChart"></div>
+  <div id="volumeChart"></div>
+  <div id="rsiChart" style="display:none;"></div>
+
+  <script>
+    let mainChart, candleSeries, ma20, ma50;
+    let volumeChart, volumeSeries;
+    let rsiChart, rsiSeries;
+    let latestCandle = null;
+
+    function createCharts() {
+      mainChart = LightweightCharts.createChart(document.getElementById('mainChart'), {
+        layout: { background: { color: '#111' }, textColor: '#ccc' },
+        grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+      });
+
+      volumeChart = LightweightCharts.createChart(document.getElementById('volumeChart'), {
+        layout: { background: { color: '#111' }, textColor: '#ccc' },
+        grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        priceScale: { position: 'right', scaleMargins: { top: 0.1, bottom: 0 } }
+      });
+
+      rsiChart = LightweightCharts.createChart(document.getElementById('rsiChart'), {
+        layout: { background: { color: '#111' }, textColor: '#ccc' },
+        grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        priceScale: { mode: 1 }
+      });
+
+      candleSeries = mainChart.addCandlestickSeries();
+      ma20 = mainChart.addLineSeries({ color: 'orange', lineWidth: 1 });
+      ma50 = mainChart.addLineSeries({ color: 'blue', lineWidth: 1 });
+
+      volumeSeries = volumeChart.addHistogramSeries({
+        color: '#26a69a',
+        lineWidth: 1,
+        priceFormat: { type: 'volume' },
+        overlay: false
+      });
+
+      rsiSeries = rsiChart.addLineSeries({ color: 'purple', lineWidth: 1 });
+    }
+
+    function calculateMA(data, period) {
+      let result = [];
+      for (let i = period - 1; i < data.length; i++) {
+        let sum = 0;
+        for (let j = 0; j < period; j++) {
+          sum += data[i - j].close;
+        }
+        result.push({ time: data[i].time, value: sum / period });
+      }
+      return result;
+    }
+
+    function calculateRSI(data, period = 14) {
+      let rsi = [];
+      let gains = 0, losses = 0;
+
+      for (let i = 1; i <= period; i++) {
+        let diff = data[i].close - data[i - 1].close;
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
+      }
+
+      let avgGain = gains / period;
+      let avgLoss = losses / period;
+      let rs = avgGain / avgLoss;
+      rsi.push({ time: data[period].time, value: 100 - 100 / (1 + rs) });
+
+      for (let i = period + 1; i < data.length; i++) {
+        let diff = data[i].close - data[i - 1].close;
+        if (diff >= 0) {
+          avgGain = (avgGain * (period - 1) + diff) / period;
+          avgLoss = (avgLoss * (period - 1)) / period;
+        } else {
+          avgGain = (avgGain * (period - 1)) / period;
+          avgLoss = (avgLoss * (period - 1) - diff) / period;
+        }
+        rs = avgGain / (avgLoss || 1);
+        rsi.push({ time: data[i].time, value: 100 - 100 / (1 + rs) });
+      }
+      return rsi;
+    }
+
+    async function loadData() {
+      const symbol = document.getElementById("symbol").value;
+      const interval = document.getElementById("interval").value;
+      const ma20On = document.getElementById("ma20Chk").checked;
+      const ma50On = document.getElementById("ma50Chk").checked;
+      const rsiOn = document.getElementById("rsiChk").checked;
+
+      try {
+        const response = await fetch(`/api/candles-live?symbol=${symbol}&interval=${interval}`);
+        const data = await response.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+          alert("Failed to load chart data.");
+          return;
+        }
+
+        document.getElementById("mainChart").innerHTML = '';
+        document.getElementById("volumeChart").innerHTML = '';
+        document.getElementById("rsiChart").innerHTML = '';
+        document.getElementById("rsiChart").style.display = rsiOn ? 'block' : 'none';
+
+        createCharts();
+        candleSeries.setData(data);
+        latestCandle = data[data.length - 1];
+
+        if (ma20On) ma20.setData(calculateMA(data, 20));
+        if (ma50On) ma50.setData(calculateMA(data, 50));
+
+        volumeSeries.setData(data.map(c => ({
+          time: c.time,
+          value: c.volume,
+          color: c.close > c.open ? '#26a69a' : '#ef5350'
+        })));
+
+        if (rsiOn) rsiSeries.setData(calculateRSI(data, 14));
+
+        setupLiveUpdate(symbol, interval);
+      } catch (e) {
+        console.error("Chart Error:", e);
+        alert("Failed to load chart data.");
+      }
+    }
+
+    function setupLiveUpdate(symbol, interval) {
+      if (window.liveSocket) window.liveSocket.close();
+
+      window.liveSocket = new WebSocket(`wss://${location.host}/ws/live?symbol=${symbol}&interval=${interval}`);
+      window.liveSocket.onmessage = event => {
+        const update = JSON.parse(event.data);
+        if (!update || !update.time) return;
+
+        // Replace or append latest candle
+        if (update.time === latestCandle.time) {
+          candleSeries.update(update);
+        } else if (update.time > latestCandle.time) {
+          candleSeries.update(update);
+          latestCandle = update;
+        }
+
+        volumeSeries.update({
+          time: update.time,
+          value: update.volume,
+          color: update.close > update.open ? '#26a69a' : '#ef5350'
+        });
+      };
+    }
+
+    loadData();
+  </script>
+</body>
+</html>

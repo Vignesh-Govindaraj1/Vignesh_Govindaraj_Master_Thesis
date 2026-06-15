@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>📊 Sector Gauge View</title>
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        #controls {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        select, button {
+            padding: 5px 10px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        #gauge {
+            width: 100%;
+            max-width: 600px;
+            margin: auto;
+        }
+        #debug-table {
+            margin-top: 40px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 800px;
+            margin: auto;
+        }
+        th, td {
+            border: 1px solid #aaa;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #eee;
+        }
+        #error {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📊 Sector Gauge View</h1>
+    <div id="controls">
+        <label for="sector">Select Sector:</label>
+        <select id="sector">
+            <!-- Options will be populated dynamically -->
+        </select>
+
+        <label for="interval">Timeframe:</label>
+        <select id="interval">
+            <option value="1min">1 Minute</option>
+            <option value="5min">5 Minutes</option>
+            <option value="15min" selected>15 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="1d">1 Day</option>
+        </select>
+
+        <button onclick="loadData()">Load</button>
+    </div>
+
+    <div id="gauge"></div>
+    <div id="debug-table">
+        <h2>Top 5 Stocks by Volume</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Current Volume</th>
+                    <th>Previous Volume</th>
+                    <th>Change (%)</th>
+                </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+        </table>
+    </div>
+
+    <p id="error"></p>
+
+    <script>
+        // Fetch sector options dynamically
+        fetch('/api/sectors')
+            .then(response => response.json())
+            .then(data => {
+                const sectorSelect = document.getElementById('sector');
+                data.sectors.forEach(sector => {
+                    const option = document.createElement('option');
+                    option.value = sector;
+                    option.textContent = sector;
+                    sectorSelect.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Error loading sectors:', err);
+                document.getElementById("error").textContent = "Error loading sector list";
+            });
+
+        function loadData() {
+            const sector = document.getElementById('sector').value;
+            const interval = document.getElementById('interval').value;
+            fetch(`/api/sector-trend?sector=${sector}&interval=${interval}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!Array.isArray(data)) {
+                        document.getElementById("error").textContent = data.error || "Invalid data";
+                        return;
+                    }
+
+                    document.getElementById("error").textContent = "";
+                    renderGauge(data);
+                    renderTable(data.slice(0, 5)); // top 5
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById("error").textContent = "Error fetching data";
+                });
+        }
+
+        function renderGauge(data) {
+            const top = data.slice(0, 1)[0];
+            const strength = top.strength || 0;
+
+            const gaugeData = [{
+                type: "indicator",
+                mode: "gauge+number+delta",
+                value: strength,
+                title: { text: `📈 Sector Strength: ${top.symbol}`, font: { size: 18 } },
+                gauge: {
+                    axis: { range: [0, 100], tickwidth: 1, tickcolor: "darkblue" },
+                    bar: { color: "green" },
+                    steps: [
+                        { range: [0, 20], color: "#ffcccc" },
+                        { range: [20, 40], color: "#ffe0b3" },
+                        { range: [40, 60], color: "#ffffcc" },
+                        { range: [60, 80], color: "#ccffcc" },
+                        { range: [80, 100], color: "#b3e6b3" }
+                    ],
+                }
+            }];
+
+            const layout = {
+                width: 500,
+                height: 400,
+                margin: { t: 50, r: 25, l: 25, b: 25 },
+            };
+
+            Plotly.newPlot('gauge', gaugeData, layout);
+        }
+
+        function renderTable(data) {
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.symbol}</td>
+                    <td>${row.volume}</td>
+                    <td>${row.prev_volume || 0}</td>
+                    <td>${row.change || 0}%</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Auto-refresh every 60 seconds
+        setInterval(loadData, 60000);
+    </script>
+
+</body>
+</html>

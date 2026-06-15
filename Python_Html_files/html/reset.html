@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reset Password - Dalalstreet</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    input {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      width: 300px;
+      background: #222;
+      color: white;
+      border: 1px solid #444;
+    }
+    button {
+      padding: 10px 20px;
+      background: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    a {
+      color: #0af;
+    }
+  </style>
+</head>
+<body>
+  <h2>Reset Password</h2>
+  {% if message %}<p style="color:lime">{{ message }}</p>{% endif %}
+  {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+  <form method="POST">
+    <input type="password" name="password" placeholder="New password" required />
+    <input type="password" name="confirm_password" placeholder="Confirm password" required />
+    <button type="submit">Reset Password</button>
+  </form>
+  <p><a href="/login">Back to Login</a></p>
+</body>
+</html>
