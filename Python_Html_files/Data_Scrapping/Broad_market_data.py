@@ -6,8 +6,8 @@ DB_CONFIG = {
     "host": "13.60.0.106", 
     "port": "5432",
     "dbname": "dalalstreet",
-    "user": "vicky",
-    "password": "Pa@13101996"
+    "user": "username", #Hint -name
+    "password": "pass" *hint:pa
 }
 
 BROAD_FOLDER = "C:/Users/srisa/OneDrive - Hochschule Luzern/Master's Thesis/Data/Broad market indices"
